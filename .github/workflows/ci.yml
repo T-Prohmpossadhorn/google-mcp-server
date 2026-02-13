@@ -16,14 +16,13 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        go: ['1.23']
     steps:
     - uses: actions/checkout@v4
 
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: ${{ matrix.go }}
+        go-version-file: '.go-version'
         cache: true
 
     - name: Download dependencies
@@ -45,7 +44,7 @@ jobs:
         CI: true
 
     - name: Upload coverage to Codecov
-      if: matrix.os == 'ubuntu-latest' && matrix.go == '1.23'
+      if: matrix.os == 'ubuntu-latest'
       uses: codecov/codecov-action@v3
       with:
         file: ./coverage.txt
@@ -61,7 +60,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.23'
+        go-version-file: '.go-version'
         cache: true
 
     - name: golangci-lint
@@ -82,14 +81,16 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.23'
+        go-version-file: '.go-version'
         cache: true
 
     - name: Run Gosec Security Scanner
-      shell: bash
       run: |
         go install github.com/securego/gosec/v2/cmd/gosec@latest
-        gosec -fmt sarif -out gosec-results.sarif ./... || true
+        gosec -no-fail -fmt sarif -out gosec-results.sarif ./...
+        # Fix gosec SARIF output: remove null values from relationships arrays
+        jq 'walk(if type == "array" then map(select(. != null)) else . end)' gosec-results.sarif > gosec-results-fixed.sarif
+        mv gosec-results-fixed.sarif gosec-results.sarif
 
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
@@ -101,12 +102,12 @@ jobs:
 
     - name: Upload Gosec results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
-      if: hashFiles('gosec-results.sarif') != ''
+      if: always() && hashFiles('gosec-results.sarif') != ''
       with:
         sarif_file: 'gosec-results.sarif'
 
     - name: Upload Trivy results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
-      if: hashFiles('trivy-results.sarif') != ''
+      if: always() && hashFiles('trivy-results.sarif') != ''
       with:
         sarif_file: 'trivy-results.sarif'

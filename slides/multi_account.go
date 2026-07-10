@@ -73,6 +73,8 @@ func (s *MultiAccountService) HandleToolCall(ctx context.Context, name string, a
 			}
 
 			list, err := driveService.Files.List().
+				SupportsAllDrives(true).
+				IncludeItemsFromAllDrives(true).
 				Q("mimeType='application/vnd.google-apps.presentation' and trashed = false").
 				OrderBy("modifiedTime desc").
 				PageSize(int64(maxResults)).

@@ -923,6 +923,7 @@ func (s *Service) HandleToolCall(ctx context.Context, name string, arguments jso
 			Role: role,
 		}
 		created, err := driveService.Permissions.Create(presentationId, permission).
+			SupportsAllDrives(true).
 			Fields("id", "type", "role").
 			Do()
 		if err != nil {
@@ -930,7 +931,7 @@ func (s *Service) HandleToolCall(ctx context.Context, name string, arguments jso
 		}
 
 		shareUrl := fmt.Sprintf("https://docs.google.com/presentation/d/%s/edit?usp=sharing", presentationId)
-		if file, err := driveService.Files.Get(presentationId).Fields("webViewLink").Do(); err == nil && file.WebViewLink != "" {
+		if file, err := driveService.Files.Get(presentationId).SupportsAllDrives(true).Fields("webViewLink").Do(); err == nil && file.WebViewLink != "" {
 			shareUrl = file.WebViewLink
 		}
 

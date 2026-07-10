@@ -141,7 +141,7 @@ Download pre-built binaries from the [releases page](https://github.com/ngs/goog
 - `calendar_events_list_all_accounts` - List events from all authenticated accounts
 - `calendar_event_create` - Create new events (supports `account` parameter)
 - `calendar_event_update` - Update existing events
-- `calendar_event_delete` - Delete events
+- `calendar_event_delete` - Delete events (supports `account` parameter)
 - `calendar_event_get` - Get event details
 - `calendar_freebusy_query` - Query free/busy information
 - `calendar_event_search` - Search for events

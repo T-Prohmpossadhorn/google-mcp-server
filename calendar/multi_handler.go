@@ -128,6 +128,28 @@ func (h *MultiAccountHandler) GetTools() []server.Tool {
 			},
 		},
 		{
+			Name:        "calendar_event_delete",
+			Description: "Delete a calendar event",
+			InputSchema: server.InputSchema{
+				Type: "object",
+				Properties: map[string]server.Property{
+					"calendar_id": {
+						Type:        "string",
+						Description: "Calendar ID (use 'primary' for main calendar)",
+					},
+					"event_id": {
+						Type:        "string",
+						Description: "Event ID to delete",
+					},
+					"account": {
+						Type:        "string",
+						Description: "Email address of the account to use (optional)",
+					},
+				},
+				Required: []string{"calendar_id", "event_id"},
+			},
+		},
+		{
 			Name:        "calendar_events_list_all_accounts",
 			Description: "List events from all authenticated accounts for today or specified date range",
 			InputSchema: server.InputSchema{
@@ -160,6 +182,8 @@ func (h *MultiAccountHandler) HandleToolCall(ctx context.Context, name string, a
 		return h.handleEventsList(ctx, arguments)
 	case "calendar_event_create":
 		return h.handleEventCreate(ctx, arguments)
+	case "calendar_event_delete":
+		return h.handleEventDelete(ctx, arguments)
 	case "calendar_events_list_all_accounts":
 		return h.handleEventsListAllAccounts(ctx, arguments)
 	default:
@@ -354,6 +378,52 @@ func (h *MultiAccountHandler) handleEventCreate(ctx context.Context, arguments j
 	return map[string]interface{}{
 		"event":   createdEvent,
 		"message": fmt.Sprintf("Event '%s' created successfully", args.Summary),
+	}, nil
+}
+
+// handleEventDelete deletes an event
+func (h *MultiAccountHandler) handleEventDelete(ctx context.Context, arguments json.RawMessage) (interface{}, error) {
+	var args struct {
+		CalendarID string `json:"calendar_id"`
+		EventID    string `json:"event_id"`
+		Account    string `json:"account"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	// Determine which account to use based on calendar_id
+	accountEmail := args.Account
+	if accountEmail == "" && strings.Contains(args.CalendarID, "@") {
+		accounts := h.accountManager.ListAccounts()
+		for _, acc := range accounts {
+			if strings.Contains(args.CalendarID, acc.Email) || args.CalendarID == acc.Email {
+				accountEmail = acc.Email
+				break
+			}
+		}
+	}
+
+	client, err := h.getClientForAccount(ctx, accountEmail)
+	if err != nil {
+		return nil, err
+	}
+
+	// If calendar_id looks like an email and matches an account, use "primary" instead
+	calendarID := args.CalendarID
+	if accountEmail != "" && args.CalendarID == accountEmail {
+		calendarID = "primary"
+	}
+
+	if err := client.DeleteEvent(calendarID, args.EventID); err != nil {
+		return nil, fmt.Errorf("failed to delete event: %w", err)
+	}
+
+	return map[string]interface{}{
+		"calendar_id": calendarID,
+		"event_id":    args.EventID,
+		"account":     accountEmail,
+		"status":      "deleted",
 	}, nil
 }
 

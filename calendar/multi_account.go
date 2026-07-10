@@ -3,6 +3,7 @@ package calendar
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 
@@ -29,7 +30,7 @@ func NewMultiAccountClient(ctx context.Context, accountManager *auth.AccountMana
 	for email, oauthClient := range accountManager.GetAllOAuthClients() {
 		service, err := calendar.NewService(ctx, option.WithHTTPClient(oauthClient.GetHTTPClient()))
 		if err != nil {
-			fmt.Printf("Warning: failed to create calendar service for %s: %v\n", email, err)
+			fmt.Fprintf(os.Stderr, "Warning: failed to create calendar service for %s: %v\n", email, err)
 			continue
 		}
 		mac.clients[email] = &Client{service: service}

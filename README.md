@@ -41,22 +41,25 @@ go build -o google-mcp-server .
 ### macOS Quick Setup (Recommended)
 
 ```bash
-# Install via Homebrew
-brew tap ngs/tap
-brew install google-mcp-server
+# Build this fork from source
+git clone https://github.com/T-Prohmpossadhorn/google-mcp-server.git
+cd google-mcp-server
+go build -o google-mcp-server .
 
-# Configure Claude Desktop (Apple Silicon)
+# Configure Claude Desktop (adjust the path to where you cloned)
 echo '{
   "mcpServers": {
-    "google": {
-      "command": "/opt/homebrew/bin/google-mcp-server"
+    "google-workspace-local": {
+      "command": "'"$(pwd)"'/google-mcp-server"
     }
   }
 }' > ~/Library/Application\ Support/Claude/claude_desktop_config.json
 
 # Run to authenticate (first time only)
-google-mcp-server
+./google-mcp-server
 ```
+
+> **Note**: Homebrew (`brew tap ngs/tap`) installs the *upstream* v0.4.0, which does not include this fork's fixes. Build from source (above) to get the patched version.
 
 For detailed setup instructions, see below.
 
@@ -68,33 +71,22 @@ For detailed setup instructions, see below.
 
 ### Installation
 
-#### Using Homebrew (macOS/Linux)
+#### From Source (this fork — recommended)
 
 ```bash
-brew tap ngs/tap
-brew install google-mcp-server
-```
-
-#### From Source
-
-```bash
-git clone https://github.com/ngs/google-mcp-server.git
+git clone https://github.com/T-Prohmpossadhorn/google-mcp-server.git
 cd google-mcp-server
-go build
+go build -o google-mcp-server .
 ```
 
-#### Using Go Install
+#### Upstream Alternatives (without this fork's fixes)
+
+The upstream project offers Homebrew (`brew tap ngs/tap && brew install google-mcp-server`), `go install go.ngs.io/google-mcp-server@latest`, and [pre-built binaries](https://github.com/ngs/google-mcp-server/releases) — but all of these install upstream v0.4.0 and lack the fixes listed in [About This Fork](#about-this-fork). If you installed via Homebrew, you can overwrite the installed binary with this fork's build:
 
 ```bash
-go install go.ngs.io/google-mcp-server@latest
+cp ./google-mcp-server "$(brew --prefix)/Cellar/google-mcp-server/0.4.0/bin/google-mcp-server"
+brew pin google-mcp-server   # prevent upgrades from restoring the unpatched version
 ```
-
-#### Pre-built Binaries
-
-Download pre-built binaries from the [releases page](https://github.com/ngs/google-mcp-server/releases) for:
-- macOS (Intel & Apple Silicon)
-- Linux (x86_64 & ARM64)
-- Windows (x86_64)
 
 ### Setup
 
@@ -293,26 +285,15 @@ Claude Code users can set up the Google MCP Server using either the `claude mcp 
 
 1. **Install the server** (if not already installed):
    ```bash
-   # Using Homebrew (recommended for macOS)
-   brew tap ngs/tap
-   brew install google-mcp-server
-   
-   # Or build from source
-   git clone https://github.com/ngs/google-mcp-server.git
+   # Build this fork from source
+   git clone https://github.com/T-Prohmpossadhorn/google-mcp-server.git
    cd google-mcp-server
-   go build
+   go build -o google-mcp-server .
    ```
 
 2. **Add the MCP server to Claude Code**:
    ```bash
-   # If installed via Homebrew (Apple Silicon)
-   claude mcp add google /opt/homebrew/bin/google-mcp-server
-   
-   # If installed via Homebrew (Intel Mac)
-   claude mcp add google /usr/local/bin/google-mcp-server
-   
-   # If built from source
-   claude mcp add google /path/to/your/google-mcp-server/google-mcp-server
+   claude mcp add google-workspace-local /path/to/your/google-mcp-server/google-mcp-server
    ```
 
 3. **Configure OAuth credentials**:
@@ -561,7 +542,7 @@ See [WORKSPACE_SETUP.md](WORKSPACE_SETUP.md) for detailed instructions on config
 
 ```bash
 # Clone the repository
-git clone https://github.com/ngs/google-mcp-server.git
+git clone https://github.com/T-Prohmpossadhorn/google-mcp-server.git
 cd google-mcp-server
 
 # Install dependencies
@@ -611,7 +592,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-For issues, questions, or contributions, please visit the [GitHub repository](https://github.com/ngs/google-mcp-server).
+For issues, questions, or contributions to this fork, please visit [T-Prohmpossadhorn/google-mcp-server](https://github.com/T-Prohmpossadhorn/google-mcp-server). For the upstream project, see [ngs/google-mcp-server](https://github.com/ngs/google-mcp-server).
 
 ## Roadmap
 

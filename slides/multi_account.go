@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"go.ngs.io/google-mcp-server/auth"
 	"go.ngs.io/google-mcp-server/server"
+	"google.golang.org/api/drive/v3"
+	"google.golang.org/api/option"
 )
 
 type MultiAccountService struct {
@@ -51,7 +54,8 @@ func (s *MultiAccountService) HandleToolCall(ctx context.Context, name string, a
 		}
 
 		accounts := s.authManager.ListAccounts()
-		allPresentations := []map[string]interface{}{}
+		accountResults := map[string]interface{}{}
+		totalCount := 0
 
 		for _, account := range accounts {
 			// Skip if no OAuth client
@@ -59,21 +63,48 @@ func (s *MultiAccountService) HandleToolCall(ctx context.Context, name string, a
 				continue
 			}
 
-			// Create Drive client to list presentations (Slides API doesn't have direct list)
-			// We would typically use Drive API to list presentations
-			// For now, we'll return a placeholder
-			accountPresentations := map[string]interface{}{
-				"account":     account.Email,
-				"note":        "Use Drive API with mimeType='application/vnd.google-apps.presentation' to list presentations",
-				"max_results": maxResults,
+			// The Slides API has no list endpoint; presentations are Drive
+			// files, so list them through the Drive API.
+			driveService, err := drive.NewService(ctx, option.WithHTTPClient(account.OAuthClient.GetHTTPClient()))
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to create drive service for %s: %v\n", account.Email, err)
+				accountResults[account.Email] = map[string]interface{}{"error": err.Error()}
+				continue
 			}
 
-			allPresentations = append(allPresentations, accountPresentations)
+			list, err := driveService.Files.List().
+				Q("mimeType='application/vnd.google-apps.presentation' and trashed = false").
+				OrderBy("modifiedTime desc").
+				PageSize(int64(maxResults)).
+				Fields("files(id, name, modifiedTime, webViewLink)").
+				Do()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to list presentations for %s: %v\n", account.Email, err)
+				accountResults[account.Email] = map[string]interface{}{"error": err.Error()}
+				continue
+			}
+
+			presentations := make([]map[string]interface{}, 0, len(list.Files))
+			for _, file := range list.Files {
+				presentations = append(presentations, map[string]interface{}{
+					"presentation_id": file.Id,
+					"title":           file.Name,
+					"modified_time":   file.ModifiedTime,
+					"url":             file.WebViewLink,
+				})
+			}
+
+			accountResults[account.Email] = map[string]interface{}{
+				"count":         len(presentations),
+				"presentations": presentations,
+			}
+			totalCount += len(presentations)
 		}
 
 		return map[string]interface{}{
-			"accounts":      len(accounts),
-			"presentations": allPresentations,
+			"account_count": len(accounts),
+			"accounts":      accountResults,
+			"total_count":   totalCount,
 		}, nil
 
 	default:

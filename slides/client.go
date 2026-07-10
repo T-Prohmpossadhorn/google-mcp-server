@@ -862,16 +862,26 @@ func (c *Client) ApplyTemplate(presentationId string, templateId string) (*slide
 	return nil, fmt.Errorf("template application not yet implemented")
 }
 
-func (c *Client) SetSlideLayout(presentationId string, slideId string, layoutId string) (*slides.BatchUpdatePresentationResponse, error) {
+// CreateSlideWithPredefinedLayout creates a new slide using a predefined layout
+// name (e.g. TITLE_AND_BODY). The Slides API cannot change the layout of an
+// existing slide (SlideProperties.layoutObjectId is read-only), so layouts can
+// only be chosen at slide creation time.
+func (c *Client) CreateSlideWithPredefinedLayout(presentationId string, predefinedLayout string, insertionIndex int) (*slides.BatchUpdatePresentationResponse, error) {
+	createSlideReq := &slides.CreateSlideRequest{
+		SlideLayoutReference: &slides.LayoutReference{
+			PredefinedLayout: predefinedLayout,
+		},
+	}
+
+	// Only set InsertionIndex if it's >= 0
+	// If not set, the slide will be appended to the end
+	if insertionIndex >= 0 {
+		createSlideReq.InsertionIndex = int64(insertionIndex)
+	}
+
 	requests := []*slides.Request{
 		{
-			UpdatePageProperties: &slides.UpdatePagePropertiesRequest{
-				ObjectId: slideId,
-				PageProperties: &slides.PageProperties{
-					PageBackgroundFill: &slides.PageBackgroundFill{},
-				},
-				Fields: "pageBackgroundFill",
-			},
+			CreateSlide: createSlideReq,
 		},
 	}
 

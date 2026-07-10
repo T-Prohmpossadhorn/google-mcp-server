@@ -20,6 +20,7 @@ func TestServiceGetTools(t *testing.T) {
 		"slides_presentation_create",
 		"slides_presentation_get",
 		"slides_slide_create",
+		"slides_layouts_list",
 		"slides_slide_delete",
 		"slides_slide_duplicate",
 		"slides_markdown_create",

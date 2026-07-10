@@ -187,7 +187,8 @@ Download pre-built binaries from the [releases page](https://github.com/ngs/goog
 - `slides_presentation_create` - Create new presentation (supports `account` parameter)
 - `slides_presentation_get` - Get presentation metadata (supports `account` parameter)
 - `slides_presentations_list_all_accounts` - List presentations from all authenticated accounts
-- `slides_slide_create` - Create new slide (supports `account` parameter)
+- `slides_slide_create` - Create new slide, optionally with a layout (predefined name or layout ID; supports `account` parameter)
+- `slides_layouts_list` - List a presentation's available layouts for use with `slides_slide_create` (supports `account` parameter)
 - `slides_slide_delete` - Delete slide (supports `account` parameter)
 - `slides_slide_duplicate` - Duplicate slide (supports `account` parameter)
 - `slides_markdown_create` - Create presentation from Markdown with auto-pagination (supports `account` parameter)
@@ -197,9 +198,9 @@ Download pre-built binaries from the [releases page](https://github.com/ngs/goog
 - `slides_add_image` - Add image to slide (supports `account` parameter)
 - `slides_add_table` - Add table to slide (supports `account` parameter)
 - `slides_add_shape` - Add shape to slide (supports `account` parameter)
-- `slides_set_layout` - Set slide layout (supports `account` parameter)
+- `slides_set_layout` - Not supported by the Slides API (existing slides can't be re-layouted); returns available layouts and guidance
 - `slides_export_pdf` - Export presentation as PDF (supports `account` parameter)
-- `slides_share` - Create shareable link (supports `account` parameter)
+- `slides_share` - Share presentation via an anyone-with-link Drive permission and return the link (supports `account` parameter)
 
 ## Usage Examples
 

@@ -2,6 +2,31 @@
 
 A Model Context Protocol (MCP) server that integrates with Google APIs (Calendar, Drive, Gmail, Sheets, Docs) to provide seamless access to Google services through MCP-compatible clients.
 
+## About This Fork
+
+This is a fork of [ngs/google-mcp-server](https://github.com/ngs/google-mcp-server) with the following fixes and features on top of v0.4.0:
+
+### Fixed
+- **MCP handshake corruption**: token-refresh warnings were printed to stdout, corrupting the JSON-RPC stream (`Unexpected token 'W', "Warning: f"... is not valid JSON` in MCP clients). All logging now goes to stderr.
+- **Docs & Sheets unusable in multi-account setups**: every `docs_*` and `sheets_*` tool now accepts an `account` parameter like the other services. Account-less calls return a clear "multiple accounts available, please specify" error instead of a misleading `invalid_grant`.
+- **Cold-start failures after access-token expiry**: the OAuth scope check called the tokeninfo endpoint with the stored (possibly expired) access token and failed with `400 Invalid Value`. It now refreshes first and persists the refreshed token.
+- **Shared Drive support** ([upstream issue #7](https://github.com/ngs/google-mcp-server/issues/7)): all Drive API calls now set `supportsAllDrives=true` (and `includeItemsFromAllDrives=true` for listing), so files on Shared Drives no longer return 404.
+- **`slides_share` was a no-op stub**: it now actually creates an anyone-with-link Drive permission and returns the shareable link plus a `permission_id` (revocable via `drive_permissions_delete`).
+- **`slides_presentations_list_all_accounts` was a stub**: it now lists real presentations per account via the Drive API.
+- **`slides_set_layout` always returned a bare 400**: the Google Slides API cannot change an existing slide's layout (`layoutObjectId` is read-only), so the tool now returns an actionable error listing the presentation's available layouts and pointing to layout-aware slide creation.
+
+### Added
+- **Layout support for new slides**: `slides_slide_create` accepts a `layout` parameter (a predefined name like `TITLE_AND_BODY` or a layout object ID), a new `slides_layouts_list` tool lists a presentation's layouts, and `slides_presentation_get` includes them too.
+- **`calendar_event_delete`**: exposed in the multi-account handler (the client method existed but was never registered, so MCP clients could create events they couldn't delete).
+
+To build this fork from source:
+
+```bash
+git clone https://github.com/T-Prohmpossadhorn/google-mcp-server.git
+cd google-mcp-server
+go build -o google-mcp-server .
+```
+
 ## Features
 
 - **Multiple Account Support**: Manage multiple Google accounts with automatic context-aware selection

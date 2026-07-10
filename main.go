@@ -149,36 +149,46 @@ func registerServices(ctx context.Context, srv *server.MCPServer, accountManager
 		time.Sleep(serviceDelay)
 	}
 
-	// Initialize and register Sheets service
+	// Initialize and register Sheets service with multi-account support
 	if cfg.Services.Sheets.Enabled {
-		// Initialize Sheets service
-		initCtx, cancel := context.WithTimeout(ctx, initTimeout)
-		sheetsClient, err := sheets.NewClient(initCtx, oauth)
-		cancel()
-		if err != nil {
-			// Failed to initialize Sheets client, continue without it
-		} else {
-			sheetsHandler := sheets.NewHandler(sheetsClient)
-			srv.RegisterService("sheets", sheetsHandler)
-			// Sheets service registered
+		log.Println("[DEBUG] Initializing Sheets service...")
+		var sheetsClient *sheets.Client
+		if oauth != nil {
+			initCtx, cancel := context.WithTimeout(ctx, initTimeout)
+			var err error
+			sheetsClient, err = sheets.NewClient(initCtx, oauth)
+			cancel()
+			if err != nil {
+				log.Printf("[WARNING] Failed to initialize default Sheets client: %v\n", err)
+				sheetsClient = nil
+			}
 		}
+		// Use multi-account handler
+		sheetsHandler := sheets.NewMultiAccountHandler(accountManager, sheetsClient)
+		srv.RegisterService("sheets", sheetsHandler)
+		log.Println("[DEBUG] Sheets service registered with multi-account support")
 		// Add delay before next service
 		time.Sleep(serviceDelay)
 	}
 
-	// Initialize and register Docs service
+	// Initialize and register Docs service with multi-account support
 	if cfg.Services.Docs.Enabled {
-		// Initialize Docs service
-		initCtx, cancel := context.WithTimeout(ctx, initTimeout)
-		docsClient, err := docs.NewClient(initCtx, oauth)
-		cancel()
-		if err != nil {
-			// Failed to initialize Docs client, continue without it
-		} else {
-			docsHandler := docs.NewHandler(docsClient)
-			srv.RegisterService("docs", docsHandler)
-			// Docs service registered
+		log.Println("[DEBUG] Initializing Docs service...")
+		var docsClient *docs.Client
+		if oauth != nil {
+			initCtx, cancel := context.WithTimeout(ctx, initTimeout)
+			var err error
+			docsClient, err = docs.NewClient(initCtx, oauth)
+			cancel()
+			if err != nil {
+				log.Printf("[WARNING] Failed to initialize default Docs client: %v\n", err)
+				docsClient = nil
+			}
 		}
+		// Use multi-account handler
+		docsHandler := docs.NewMultiAccountHandler(accountManager, docsClient)
+		srv.RegisterService("docs", docsHandler)
+		log.Println("[DEBUG] Docs service registered with multi-account support")
 		// Add delay before next service
 		time.Sleep(serviceDelay)
 	}

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"golang.org/x/oauth2"
@@ -93,6 +94,22 @@ func (am *AccountManager) GetTokenScopes(ctx context.Context, account *Account) 
 
 	// Create a temporary client with the token
 	tokenSource := am.oauthConfig.TokenSource(ctx, account.Token)
+
+	// Obtain a fresh token first: the stored access token may have expired,
+	// and the tokeninfo endpoint rejects expired tokens with a 400.
+	freshToken, err := tokenSource.Token()
+	if err != nil {
+		return nil, fmt.Errorf("failed to refresh token: %w", err)
+	}
+
+	// Persist the refreshed token so other callers get a valid one too
+	if freshToken.AccessToken != account.Token.AccessToken {
+		account.Token = freshToken
+		if err := am.saveAccount(account); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to save refreshed token for %s: %v\n", account.Email, err)
+		}
+	}
+
 	httpClient := oauth2.NewClient(ctx, tokenSource)
 
 	// Use the tokeninfo endpoint to get scope information
@@ -101,7 +118,7 @@ func (am *AccountManager) GetTokenScopes(ctx context.Context, account *Account) 
 		return nil, fmt.Errorf("failed to create oauth2 service: %w", err)
 	}
 
-	tokenInfo, err := oauth2Service.Tokeninfo().AccessToken(account.Token.AccessToken).Do()
+	tokenInfo, err := oauth2Service.Tokeninfo().AccessToken(freshToken.AccessToken).Do()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get token info: %w", err)
 	}

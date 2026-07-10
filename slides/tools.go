@@ -5,10 +5,40 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"go.ngs.io/google-mcp-server/auth"
 	"go.ngs.io/google-mcp-server/server"
+	"google.golang.org/api/drive/v3"
+	"google.golang.org/api/option"
+	"google.golang.org/api/slides/v1"
 )
+
+// predefinedLayouts are the layout names accepted by the Slides API's
+// LayoutReference.PredefinedLayout field.
+var predefinedLayouts = []string{
+	"BLANK",
+	"CAPTION_ONLY",
+	"TITLE",
+	"TITLE_AND_BODY",
+	"TITLE_AND_TWO_COLUMNS",
+	"TITLE_ONLY",
+	"SECTION_HEADER",
+	"SECTION_TITLE_AND_DESCRIPTION",
+	"ONE_COLUMN_TEXT",
+	"MAIN_POINT",
+	"BIG_NUMBER",
+}
+
+func isPredefinedLayout(name string) bool {
+	upper := strings.ToUpper(name)
+	for _, l := range predefinedLayouts {
+		if l == upper {
+			return true
+		}
+	}
+	return false
+}
 
 type Service struct {
 	authManager *auth.AccountManager
@@ -60,7 +90,7 @@ func (s *Service) GetTools() []server.Tool {
 		},
 		{
 			Name:        "slides_slide_create",
-			Description: "Create a new slide in a presentation",
+			Description: "Create a new slide in a presentation, optionally with a specific layout",
 			InputSchema: server.InputSchema{
 				Type: "object",
 				Properties: map[string]server.Property{
@@ -71,6 +101,28 @@ func (s *Service) GetTools() []server.Tool {
 					"insertion_index": {
 						Type:        "number",
 						Description: "Position to insert the slide (0-based)",
+					},
+					"layout": {
+						Type:        "string",
+						Description: "Layout for the new slide: a predefined layout name (BLANK, TITLE, TITLE_AND_BODY, TITLE_ONLY, SECTION_HEADER, TITLE_AND_TWO_COLUMNS, ONE_COLUMN_TEXT, MAIN_POINT, BIG_NUMBER, CAPTION_ONLY, SECTION_TITLE_AND_DESCRIPTION) or a layout object ID from slides_layouts_list (optional)",
+					},
+					"account": {
+						Type:        "string",
+						Description: "Email address of the account to use (optional)",
+					},
+				},
+				Required: []string{"presentation_id"},
+			},
+		},
+		{
+			Name:        "slides_layouts_list",
+			Description: "List the layouts available in a presentation (use a layout_id or predefined name with slides_slide_create's layout parameter)",
+			InputSchema: server.InputSchema{
+				Type: "object",
+				Properties: map[string]server.Property{
+					"presentation_id": {
+						Type:        "string",
+						Description: "Presentation ID",
 					},
 					"account": {
 						Type:        "string",
@@ -364,7 +416,7 @@ func (s *Service) GetTools() []server.Tool {
 		},
 		{
 			Name:        "slides_set_layout",
-			Description: "Set the layout of a slide",
+			Description: "NOT SUPPORTED by the Google Slides API: an existing slide's layout cannot be changed (layoutObjectId is read-only). Returns the presentation's available layouts and guidance — create a new slide with slides_slide_create's layout parameter instead",
 			InputSchema: server.InputSchema{
 				Type: "object",
 				Properties: map[string]server.Property{
@@ -408,7 +460,7 @@ func (s *Service) GetTools() []server.Tool {
 		},
 		{
 			Name:        "slides_share",
-			Description: "Create a shareable link for a presentation",
+			Description: "Share a presentation with anyone who has the link (creates a Drive 'anyone' permission) and return the shareable link",
 			InputSchema: server.InputSchema{
 				Type: "object",
 				Properties: map[string]server.Property{
@@ -594,12 +646,27 @@ func (s *Service) HandleToolCall(ctx context.Context, name string, arguments jso
 			slides = append(slides, slideInfo)
 		}
 
+		// Expose the presentation's layouts so they can be used with
+		// slides_slide_create's layout parameter.
+		layouts := make([]map[string]interface{}, 0, len(presentation.Layouts))
+		for _, layout := range presentation.Layouts {
+			layoutInfo := map[string]interface{}{
+				"layout_id": layout.ObjectId,
+			}
+			if layout.LayoutProperties != nil {
+				layoutInfo["name"] = layout.LayoutProperties.Name
+				layoutInfo["display_name"] = layout.LayoutProperties.DisplayName
+			}
+			layouts = append(layouts, layoutInfo)
+		}
+
 		return map[string]interface{}{
 			"presentation_id": presentation.PresentationId,
 			"title":           presentation.Title,
 			"slides_count":    len(presentation.Slides),
 			"url":             fmt.Sprintf("https://docs.google.com/presentation/d/%s/edit", presentation.PresentationId),
 			"slides":          slides,
+			"layouts":         layouts,
 		}, nil
 
 	case "slides_slide_create":
@@ -608,18 +675,57 @@ func (s *Service) HandleToolCall(ctx context.Context, name string, arguments jso
 		if idx, ok := args["insertion_index"].(float64); ok {
 			insertionIndex = int(idx)
 		}
+		layout, _ := args["layout"].(string)
 
-		resp, err := client.CreateSlide(presentationId, insertionIndex)
+		var resp *slides.BatchUpdatePresentationResponse
+		var err error
+		switch {
+		case layout == "":
+			resp, err = client.CreateSlide(presentationId, insertionIndex)
+		case isPredefinedLayout(layout):
+			resp, err = client.CreateSlideWithPredefinedLayout(presentationId, strings.ToUpper(layout), insertionIndex)
+		default:
+			// Treat as a layout object ID from this presentation
+			resp, err = client.CreateSlideWithLayout(presentationId, layout, insertionIndex)
+		}
 		if err != nil {
 			return nil, err
 		}
 
+		result := map[string]interface{}{"success": true}
 		if len(resp.Replies) > 0 && resp.Replies[0].CreateSlide != nil {
-			return map[string]interface{}{
-				"slide_id": resp.Replies[0].CreateSlide.ObjectId,
-			}, nil
+			result["slide_id"] = resp.Replies[0].CreateSlide.ObjectId
 		}
-		return map[string]interface{}{"success": true}, nil
+		if layout != "" {
+			result["layout"] = layout
+		}
+		return result, nil
+
+	case "slides_layouts_list":
+		presentationId, _ := args["presentation_id"].(string)
+		presentation, err := client.GetPresentation(presentationId)
+		if err != nil {
+			return nil, err
+		}
+
+		layouts := make([]map[string]interface{}, 0, len(presentation.Layouts))
+		for _, layout := range presentation.Layouts {
+			info := map[string]interface{}{
+				"layout_id": layout.ObjectId,
+			}
+			if layout.LayoutProperties != nil {
+				info["name"] = layout.LayoutProperties.Name
+				info["display_name"] = layout.LayoutProperties.DisplayName
+			}
+			layouts = append(layouts, info)
+		}
+
+		return map[string]interface{}{
+			"presentation_id":    presentationId,
+			"layouts":            layouts,
+			"predefined_layouts": predefinedLayouts,
+			"usage":              "Pass a layout_id or predefined layout name as the 'layout' parameter of slides_slide_create. Existing slides cannot be re-layouted (Slides API limitation).",
+		}, nil
 
 	case "slides_slide_delete":
 		presentationId, _ := args["presentation_id"].(string)
@@ -769,14 +875,27 @@ func (s *Service) HandleToolCall(ctx context.Context, name string, arguments jso
 
 	case "slides_set_layout":
 		presentationId, _ := args["presentation_id"].(string)
-		slideId, _ := args["slide_id"].(string)
 		layoutId, _ := args["layout_id"].(string)
 
-		_, err := client.SetSlideLayout(presentationId, slideId, layoutId)
-		if err != nil {
-			return nil, err
+		// The Slides API cannot change an existing slide's layout
+		// (SlideProperties.layoutObjectId is read-only). Return guidance
+		// with the presentation's actual layouts instead of a bare 400.
+		available := ""
+		if presentation, err := client.GetPresentation(presentationId); err == nil {
+			names := make([]string, 0, len(presentation.Layouts))
+			for _, layout := range presentation.Layouts {
+				if layout.LayoutProperties != nil {
+					names = append(names, fmt.Sprintf("%s (%s)", layout.LayoutProperties.Name, layout.ObjectId))
+				}
+			}
+			available = " Available layouts in this presentation: " + strings.Join(names, ", ") + "."
 		}
-		return map[string]interface{}{"success": true}, nil
+
+		return nil, fmt.Errorf(
+			"the Google Slides API cannot change the layout of an existing slide (layoutObjectId is read-only). "+
+				"Create a new slide with the desired layout instead: slides_slide_create with layout=%q, "+
+				"then add content and delete the old slide if needed.%s",
+			layoutId, available)
 
 	case "slides_export_pdf":
 		presentationId, _ := args["presentation_id"].(string)
@@ -790,18 +909,38 @@ func (s *Service) HandleToolCall(ctx context.Context, name string, arguments jso
 		}, nil
 
 	case "slides_share":
-		// This would typically use Drive API for sharing
 		presentationId, _ := args["presentation_id"].(string)
 		role, _ := args["role"].(string)
 
-		// For now, just return the public URL
+		// Presentations are Drive files; sharing goes through the Drive API.
+		driveService, err := drive.NewService(ctx, option.WithHTTPClient(httpClient))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create drive service: %w", err)
+		}
+
+		permission := &drive.Permission{
+			Type: "anyone",
+			Role: role,
+		}
+		created, err := driveService.Permissions.Create(presentationId, permission).
+			SupportsAllDrives(true).
+			Fields("id", "type", "role").
+			Do()
+		if err != nil {
+			return nil, fmt.Errorf("failed to share presentation: %w", err)
+		}
+
 		shareUrl := fmt.Sprintf("https://docs.google.com/presentation/d/%s/edit?usp=sharing", presentationId)
+		if file, err := driveService.Files.Get(presentationId).SupportsAllDrives(true).Fields("webViewLink").Do(); err == nil && file.WebViewLink != "" {
+			shareUrl = file.WebViewLink
+		}
 
 		return map[string]interface{}{
 			"presentation_id": presentationId,
 			"share_url":       shareUrl,
-			"role":            role,
-			"note":            "Use Drive API for actual permission management",
+			"role":            created.Role,
+			"permission_id":   created.Id,
+			"account":         account.Email,
 		}, nil
 
 	default:
